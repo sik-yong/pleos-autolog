@@ -58,4 +58,24 @@ class TripTest {
         assertEquals(2, lines.size)
         assertEquals("2026-11-02(월),홍길동,12000.0,12034.5,34.5,,34.5,\"판교, 거래처\"", lines[1])
     }
+
+    @Test fun summarizesCurrentMonth() {
+        val zone = ZoneId.of("Asia/Seoul")
+        fun at(d: String) = java.time.LocalDateTime.parse(d).atZone(zone).toInstant().toEpochMilli()
+        fun trip(d: String, km: Float, p: Purpose?) = Trip(at(d), at(d) + 60_000, 100f, 100f + km, "운전자", p, "")
+        val trips = listOf(
+            trip("2026-10-31T23:50", 50f, Purpose.BUSINESS), // 지난달: 제외
+            trip("2026-11-01T00:10", 10f, Purpose.BUSINESS),
+            trip("2026-11-02T08:00", 20f, Purpose.COMMUTE),
+            trip("2026-11-03T19:00", 30f, Purpose.PERSONAL),
+            trip("2026-11-04T09:00", 40f, null),
+        )
+        val s = monthSummary(trips, at("2026-11-08T12:00"), zone)
+        assertEquals(4, s.trips)
+        assertEquals(100f, s.totalKm, 0.001f)
+        assertEquals(30f, s.businessKm, 0.001f) // 출퇴근 + 일반업무
+        assertEquals(1, s.unclassified)
+        assertEquals(0.3f, s.businessRatio!!, 0.001f)
+        assertNull(monthSummary(emptyList(), at("2026-11-08T12:00"), zone).businessRatio)
+    }
 }

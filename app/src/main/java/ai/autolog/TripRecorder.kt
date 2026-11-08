@@ -66,6 +66,8 @@ class TripRecorder(context: Context, private val store: TripStore) {
     var onChange: () -> Unit = {}
 
     val driving get() = odoStart != null
+    /** 운행 중 P에 서 있는 상태. 이때는 화면 조작이 열린다. */
+    val parked get() = parkedSince != null
     /** 용도를 받아야 하는 운행 (지금 묻는 것 → 저장소의 미분류 순). */
     val pending get() = asking ?: store.pending()
 
@@ -230,7 +232,11 @@ class TripRecorder(context: Context, private val store: TripStore) {
         odoStart = null; parkedSince = null
         if (confirm == Confirm.MERGE) { confirm = null; mergeWith = null } // 답 없이 끝나면 따로 둔다
         var trip = Trip(startMillis, System.currentTimeMillis(), from, to, DRIVER, null, lastDestination, arrived)
-        mergeWith?.let { prev -> store.remove(prev.startMillis); trip = merge(prev, trip) }
+        // 정차 중 화면에서 이전 운행의 용도를 골랐을 수 있으므로 저장소의 최신 값으로 합친다.
+        mergeWith?.let { m ->
+            val prev = store.all().find { it.startMillis == m.startMillis } ?: m
+            store.remove(prev.startMillis); trip = merge(prev, trip)
+        }
         mergeWith = null
         store.add(trip) // 답을 못 받아도 거리는 남긴다
         val p = trip.purpose ?: run {
