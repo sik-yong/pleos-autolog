@@ -38,4 +38,4 @@ Vehicle(Gear, Odometer, Seat, Door) · NaviHelper(도착 이벤트) · TextToSpe
 
 ## APK
 
-`apk/` 폴더 (제출 시 `팀명_AutoLogBusiness_release.apk`)
+`apk/` 폴더 (제출 시 `autolog_AutoLogBusiness_release.apk`)
