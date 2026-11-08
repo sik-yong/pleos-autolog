@@ -3,6 +3,13 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+import java.util.Properties
+
+// 서명 정보는 저장소에 올리지 않는 keystore.properties에서 읽는다. 없으면 release APK는 서명 없이 만들어진다.
+val keystoreProps = Properties().apply {
+    rootProject.file("keystore.properties").takeIf { it.exists() }?.reader(Charsets.UTF_8)?.use(::load) // 경로에 한글이 있어도 깨지지 않게 UTF-8로 읽는다
+}
+
 android {
     namespace = "ai.autolog"
     compileSdk = 35
@@ -12,6 +19,20 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
+    }
+    signingConfigs {
+        if (!keystoreProps.isEmpty) create("release") {
+            storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+            storePassword = keystoreProps.getProperty("storePassword")
+            keyAlias = keystoreProps.getProperty("keyAlias")
+            keyPassword = keystoreProps.getProperty("keyPassword")
+        }
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.findByName("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
