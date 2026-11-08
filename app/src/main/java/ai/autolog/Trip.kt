@@ -1,6 +1,7 @@
 package ai.autolog
 
 import java.time.Instant
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -71,6 +72,24 @@ fun classifyPurpose(text: String): Purpose? {
         listOf("개인", "사적", "아니").any { it in t } -> Purpose.PERSONAL
         else -> null
     }
+}
+
+/** 한 달 운행 요약. 업무용 거리는 국세청 기록부처럼 출퇴근용과 일반업무용을 합친다. */
+data class MonthSummary(val trips: Int, val totalKm: Float, val businessKm: Float, val unclassified: Int) {
+    /** 업무사용비율 = 업무용 거리 / 총 주행거리. 달린 거리가 없으면 null. 미분류 운행은 분모에만 들어간다. */
+    val businessRatio: Float? get() = if (totalKm > 0f) businessKm / totalKm else null
+}
+
+fun monthSummary(trips: List<Trip>, nowMillis: Long, zone: ZoneId = ZoneId.of("Asia/Seoul")): MonthSummary {
+    val month = YearMonth.from(Instant.ofEpochMilli(nowMillis).atZone(zone))
+    val inMonth = trips.filter { YearMonth.from(Instant.ofEpochMilli(it.startMillis).atZone(zone)) == month }
+    val km = { list: List<Trip> -> list.sumOf { it.distanceKm.toDouble() }.toFloat() }
+    return MonthSummary(
+        trips = inMonth.size,
+        totalKm = km(inMonth),
+        businessKm = km(inMonth.filter { it.purpose == Purpose.COMMUTE || it.purpose == Purpose.BUSINESS }),
+        unclassified = inMonth.count { it.purpose == null },
+    )
 }
 
 // 국세청 업무용승용차 운행기록부 열 순서. UTF-8 BOM은 엑셀 한글 깨짐 방지용.
