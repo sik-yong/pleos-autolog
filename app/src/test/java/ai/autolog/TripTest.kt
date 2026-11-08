@@ -54,7 +54,9 @@ class TripTest {
             odoStartKm = 12_000f, odoEndKm = 12_034.5f,
             driver = "홍길동", purpose = Purpose.BUSINESS, note = "판교, 거래처",
         )
-        val lines = toNtsCsv(listOf(trip), ZoneId.of("Asia/Seoul")).removePrefix("﻿").trim().lines()
+        val csv = toNtsCsv(listOf(trip), ZoneId.of("Asia/Seoul"))
+        assertEquals('\uFEFF', csv.first()) // 엑셀 한글 깨짐 방지용 BOM
+        val lines = csv.removePrefix("\uFEFF").trim().lines()
         assertEquals(2, lines.size)
         assertEquals("2026-11-02(월),홍길동,12000.0,12034.5,34.5,,34.5,\"판교, 거래처\"", lines[1])
     }

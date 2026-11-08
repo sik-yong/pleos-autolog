@@ -109,7 +109,7 @@ fun toNtsCsv(trips: List<Trip>, zone: ZoneId = ZoneId.of("Asia/Seoul")): String 
             t.note,
         ).joinToString(",") { csvCell(it) }
     }
-    return "﻿" + (listOf(header) + rows).joinToString("\r\n") + "\r\n"
+    return "\uFEFF" + (listOf(header) + rows).joinToString("\r\n") + "\r\n"
 }
 
 private fun csvCell(s: String) =
