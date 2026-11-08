@@ -39,3 +39,18 @@ Vehicle(Gear, Odometer, Seat, Door) · NaviHelper(도착 이벤트) · TextToSpe
 ## APK
 
 `apk/` 폴더 (제출 시 `autolog_AutoLogBusiness_release.apk`)
+
+release 빌드:
+
+1. 키스토어를 만든다(한 번만). 키스토어와 비밀번호는 잃어버리면 같은 서명으로 업데이트할 수 없으니 따로 보관한다.
+   ```bash
+   keytool -genkeypair -v -keystore ~/autolog-release.jks -alias autolog -keyalg RSA -keysize 2048 -validity 10000
+   ```
+2. `keystore.properties.example`을 `keystore.properties`로 복사해 경로와 비밀번호를 채운다.
+3. 빌드하고 제출 파일명으로 복사한다.
+   ```bash
+   ./gradlew :app:assembleRelease
+   mkdir -p apk && cp app/build/outputs/apk/release/app-release.apk apk/autolog_AutoLogBusiness_release.apk
+   ```
+
+`keystore.properties`가 없으면 서명 없는 `app-release-unsigned.apk`가 만들어지며, 설치할 수 없다.

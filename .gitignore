@@ -7,3 +7,6 @@ local.properties
 docs/submission/
 .DS_Store
 HANDOFF.md
+keystore.properties
+*.jks
+*.keystore
