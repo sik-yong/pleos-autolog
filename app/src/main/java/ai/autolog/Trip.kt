@@ -99,8 +99,6 @@ fun monthSummary(trips: List<Trip>, nowMillis: Long, zone: ZoneId = ZoneId.of("A
  * UTF-8 BOM은 엑셀 한글 깨짐 방지용.
  */
 fun toNtsCsv(trips: List<Trip>, profile: Profile = Profile(), zone: ZoneId = ZoneId.of("Asia/Seoul")): String {
-    val day = DateTimeFormatter.ofPattern("yyyy-MM-dd(E)", Locale.KOREAN).withZone(zone)
-    val km = { v: Float -> String.format(Locale.US, "%.1f", v) }
     val head = listOf(
         "업무용승용차 운행기록부",
         listOf("상호(법인명)", profile.company, "사업자등록번호", profile.bizNo).joinToString(",") { csvCell(it) },
@@ -108,8 +106,54 @@ fun toNtsCsv(trips: List<Trip>, profile: Profile = Profile(), zone: ZoneId = Zon
         "",
     )
     val header = "사용일자,부서,성명,주행 전 계기판 거리(km),주행 후 계기판 거리(km),주행거리(km),출퇴근용(km),일반업무용(km),비고"
-    val rows = trips.sortedBy { it.startMillis }.map { t ->
+    val sorted = trips.sortedBy { it.startMillis }
+    val rows = sorted.groupBy { YearMonth.from(Instant.ofEpochMilli(it.startMillis).atZone(zone)) }.flatMap { (month, list) ->
+        list.map { row(it, zone) } + subtotalRow("${month.year}년 ${month.monthValue}월 소계", list)
+    }
+    val totals = if (sorted.isEmpty()) emptyList() else {
+        val s = TenthsSummary.of(sorted)
         listOf(
+            "",
+            subtotalRow("기간 합계", sorted),
+            listOf("총주행거리(km)", tenths(s.total)).joinToString(","),
+            listOf("업무용 사용거리(km)", tenths(s.commute + s.business)).joinToString(","),
+            listOf("업무사용비율(%)", s.ratioPercent() ?: "").joinToString(","),
+        )
+    }
+    return "\uFEFF" + (head + header + rows + totals).joinToString("\r\n") + "\r\n"
+}
+
+/** 거리는 표에 적힌 값(0.1km 단위)을 그대로 더해 소계가 행 합과 어긋나지 않게 한다. */
+private fun tenthsOf(v: Float) = Math.round(v * 10.0)
+private fun tenths(t: Long) = String.format(Locale.US, "%.1f", t / 10.0)
+
+private class TenthsSummary(val total: Long, val commute: Long, val business: Long, val unclassified: Int) {
+    /** 업무사용비율 = (출퇴근 + 일반업무) / 총주행거리. 미분류는 분모에만 들어간다. */
+    fun ratioPercent(): String? = if (total > 0) String.format(Locale.US, "%.1f", (commute + business) * 100.0 / total) else null
+
+    companion object {
+        fun of(trips: List<Trip>) = TenthsSummary(
+            total = trips.sumOf { tenthsOf(it.distanceKm) },
+            commute = trips.filter { it.purpose == Purpose.COMMUTE }.sumOf { tenthsOf(it.distanceKm) },
+            business = trips.filter { it.purpose == Purpose.BUSINESS }.sumOf { tenthsOf(it.distanceKm) },
+            unclassified = trips.count { it.purpose == null },
+        )
+    }
+}
+
+private fun subtotalRow(label: String, trips: List<Trip>): String {
+    val s = TenthsSummary.of(trips)
+    val note = listOfNotNull(
+        s.ratioPercent()?.let { "업무사용비율 $it%" },
+        "미분류 ${s.unclassified}건".takeIf { s.unclassified > 0 },
+    ).joinToString(" · ")
+    return listOf(label, "", "", "", "", tenths(s.total), tenths(s.commute), tenths(s.business), note).joinToString(",") { csvCell(it) }
+}
+
+private fun row(t: Trip, zone: ZoneId): String {
+    val day = DateTimeFormatter.ofPattern("yyyy-MM-dd(E)", Locale.KOREAN).withZone(zone)
+    val km = { v: Float -> tenths(tenthsOf(v)) }
+    return listOf(
             day.format(Instant.ofEpochMilli(t.startMillis)),
             t.dept,
             t.driver,
@@ -120,8 +164,6 @@ fun toNtsCsv(trips: List<Trip>, profile: Profile = Profile(), zone: ZoneId = Zon
             if (t.purpose == Purpose.BUSINESS) km(t.distanceKm) else "",
             t.note,
         ).joinToString(",") { csvCell(it) }
-    }
-    return "\uFEFF" + (head + header + rows).joinToString("\r\n") + "\r\n"
 }
 
 private fun csvCell(s: String) =

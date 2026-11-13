@@ -67,6 +67,29 @@ class TripTest {
         assertEquals("2026-11-02(월),영업팀,홍길동,12000.0,12034.5,34.5,,34.5,\"판교, 거래처\"", lines[5])
     }
 
+    @Test fun exportsMonthlySubtotalsAndPeriodTotals() {
+        val zone = ZoneId.of("Asia/Seoul")
+        fun at(d: String) = java.time.LocalDateTime.parse(d).atZone(zone).toInstant().toEpochMilli()
+        var odo = 1000f
+        fun trip(d: String, km: Float, p: Purpose?) = Trip(at(d), at(d) + 60_000, odo, (odo + km).also { odo = it }, "홍길동", p, "")
+        val trips = listOf(
+            trip("2026-10-30T09:00", 10.0f, Purpose.BUSINESS),
+            trip("2026-10-31T18:00", 5.0f, Purpose.PERSONAL),
+            trip("2026-11-02T08:00", 20.0f, Purpose.COMMUTE),
+            trip("2026-11-03T10:00", 30.0f, Purpose.BUSINESS),
+            trip("2026-11-04T10:00", 50.0f, null),
+        )
+        val lines = toNtsCsv(trips.reversed(), Profile(), zone).removePrefix("\uFEFF").trim().lines()
+        assertEquals("2026년 10월 소계,,,,,15.0,0.0,10.0,업무사용비율 66.7%", lines[7])
+        assertEquals("2026년 11월 소계,,,,,100.0,20.0,30.0,업무사용비율 50.0% · 미분류 1건", lines[11])
+        assertEquals("기간 합계,,,,,115.0,20.0,40.0,업무사용비율 52.2% · 미분류 1건", lines[13])
+        assertEquals("총주행거리(km),115.0", lines[14])
+        assertEquals("업무용 사용거리(km),60.0", lines[15])
+        assertEquals("업무사용비율(%),52.2", lines[16])
+        // 운행이 없으면 합계 행도 없다
+        assertEquals(5, toNtsCsv(emptyList(), Profile(), zone).removePrefix("\uFEFF").trim().lines().size)
+    }
+
     @Test fun summarizesCurrentMonth() {
         val zone = ZoneId.of("Asia/Seoul")
         fun at(d: String) = java.time.LocalDateTime.parse(d).atZone(zone).toInstant().toEpochMilli()
