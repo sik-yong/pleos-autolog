@@ -39,6 +39,9 @@ class TripTest {
         assertEquals(50f, merged.distanceKm)
         assertEquals(Purpose.BUSINESS, merged.purpose)
         assertEquals("주유소 → 판교", merged.note)
+        val byOther = merge(prev.copy(dept = "영업팀"), Trip(110 * min, 150 * min, 120f, 150f, "b", null, ""))
+        assertEquals("a", byOther.driver) // 이어 붙이면 먼저 시작한 운행의 사용자
+        assertEquals("영업팀", byOther.dept)
     }
 
     @Test fun detectsMissedDistance() {
@@ -54,11 +57,14 @@ class TripTest {
             odoStartKm = 12_000f, odoEndKm = 12_034.5f,
             driver = "홍길동", purpose = Purpose.BUSINESS, note = "판교, 거래처",
         )
-        val csv = toNtsCsv(listOf(trip), ZoneId.of("Asia/Seoul"))
+        val profile = Profile(company = "오토로그(주)", bizNo = "123-45-67890", carModel = "쏘나타", plate = "12가3456")
+        val csv = toNtsCsv(listOf(trip.copy(dept = "영업팀")), profile, ZoneId.of("Asia/Seoul"))
         assertEquals('\uFEFF', csv.first()) // 엑셀 한글 깨짐 방지용 BOM
         val lines = csv.removePrefix("\uFEFF").trim().lines()
-        assertEquals(2, lines.size)
-        assertEquals("2026-11-02(월),홍길동,12000.0,12034.5,34.5,,34.5,\"판교, 거래처\"", lines[1])
+        assertEquals("상호(법인명),오토로그(주),사업자등록번호,123-45-67890", lines[1])
+        assertEquals("차종,쏘나타,자동차등록번호,12가3456", lines[2])
+        assertEquals("사용일자,부서,성명,주행 전 계기판 거리(km),주행 후 계기판 거리(km),주행거리(km),출퇴근용(km),일반업무용(km),비고", lines[4])
+        assertEquals("2026-11-02(월),영업팀,홍길동,12000.0,12034.5,34.5,,34.5,\"판교, 거래처\"", lines[5])
     }
 
     @Test fun summarizesCurrentMonth() {

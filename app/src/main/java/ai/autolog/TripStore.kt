@@ -17,7 +17,7 @@ import java.util.Locale
 class Exported(val name: String, val location: String, val uri: Uri?)
 
 // ponytail: 단말 로컬 JSON 파일. 서버 동기화·웹 관리자 붙일 때 교체.
-class TripStore(context: Context) {
+class TripStore(context: Context, private val profiles: ProfileStore) {
     private val resolver = context.contentResolver
     private val file = File(context.filesDir, "trips.json")
     private val exportDir = context.getExternalFilesDir(null) ?: context.filesDir
@@ -36,6 +36,7 @@ class TripStore(context: Context) {
                 purpose = o.optString("purpose").takeIf { it.isNotEmpty() }?.let(Purpose::valueOf),
                 note = o.optString("note"),
                 arrived = o.optBoolean("arrived"),
+                dept = o.optString("dept"),
             )
         }
     }
@@ -58,7 +59,7 @@ class TripStore(context: Context) {
      */
     fun exportCsv(nowMillis: Long = System.currentTimeMillis()): Exported {
         val name = "운행기록부_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(nowMillis))}.csv"
-        val bytes = toNtsCsv(all()).toByteArray(Charsets.UTF_8)
+        val bytes = toNtsCsv(all(), profiles.load()).toByteArray(Charsets.UTF_8)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             val f = File(exportDir, name).apply { writeBytes(bytes) }
             return Exported(name, f.absolutePath, null)
@@ -91,7 +92,7 @@ class TripStore(context: Context) {
                     .put("start", t.startMillis).put("end", t.endMillis)
                     .put("odoStart", t.odoStartKm.toDouble()).put("odoEnd", t.odoEndKm.toDouble())
                     .put("driver", t.driver).put("purpose", t.purpose?.name ?: "")
-                    .put("note", t.note).put("arrived", t.arrived)
+                    .put("note", t.note).put("arrived", t.arrived).put("dept", t.dept)
             )
         }
         file.writeText(arr.toString())

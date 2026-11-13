@@ -28,7 +28,6 @@ import ai.pleos.playground.tts.constant.Mode as TtsMode
 
 private const val TAG = "AutoLog"
 private const val LISTEN_TIMEOUT_MILLIS = 10_000L
-private const val DRIVER = "운전자" // ponytail: 고정값, 차량 프로필 연동 시 교체
 
 /**
  * P 해제 = 운행 시작. P 진입만으로는 끝내지 않고 하차 신호(운전석 벨트 해제·문 열림·내비 도착)를 기다린다.
@@ -36,7 +35,7 @@ private const val DRIVER = "운전자" // ponytail: 고정값, 차량 프로필 
  * 끝난 지 30분 안에 다시 출발하면 이전 운행과 이어 붙일지 묻는다 (주유·충전 같은 짧은 정차).
  * 끝난 운행은 용도 없이 먼저 저장하고 음성으로 묻는다. 답을 못 받으면 다음 출발 때 다시 묻는다.
  */
-class TripRecorder(context: Context, private val store: TripStore) {
+class TripRecorder(context: Context, private val store: TripStore, private val profiles: ProfileStore) {
     private val vehicle = Vehicle(context)
     private val navi = NaviHelper(context)
     private val tts = TextToSpeech(context, TtsMode.ON_DEVICE)
@@ -49,6 +48,8 @@ class TripRecorder(context: Context, private val store: TripStore) {
     private var startMillis = 0L
     private var odoStart: Float? = null
     private var lastDestination = ""
+    /** 운행을 시작할 때의 사용자. 운행 중에 설정을 바꿔도 이 운행은 시작 때 값으로 남긴다. */
+    private var user = Profile()
     private var parkedSince: Long? = null
     private var arrived = false
     private var beltReleased = false
@@ -66,6 +67,9 @@ class TripRecorder(context: Context, private val store: TripStore) {
     var onChange: () -> Unit = {}
 
     val driving get() = odoStart != null
+    /** 기어가 P가 아닌 상태. 계기판 조회가 늦거나 실패해도 화면 조작을 바로 막는 데 쓴다. */
+    var inGear = false; private set
+    private var starting = false
     /** 운행 중 P에 서 있는 상태. 이때는 화면 조작이 열린다. */
     val parked get() = parkedSince != null
     /** 용도를 받아야 하는 운행 (지금 묻는 것 → 저장소의 미분류 순). */
@@ -129,6 +133,10 @@ class TripRecorder(context: Context, private val store: TripStore) {
     }
 
     private fun onGear(gear: VehicleGear?) {
+        if (gear != null && gear != VehicleGear.GEAR_UNKNOWN) {
+            val moving = gear != VehicleGear.GEAR_PARK
+            if (moving != inGear) { inGear = moving; onChange() }
+        }
         when {
             gear == VehicleGear.GEAR_PARK -> if (driving && parkedSince == null) park()
             gear == null || gear == VehicleGear.GEAR_UNKNOWN -> Unit
@@ -191,19 +199,23 @@ class TripRecorder(context: Context, private val store: TripStore) {
     }
 
     fun startTrip() {
-        if (driving) return
+        if (driving || starting) return // 계기판 응답을 기다리는 중에 다시 출발해도 첫 요청 하나만 쓴다
+        starting = true
+        val who = profiles.load() // 출발하는 순간의 사용자로 확정한다 (계기판 조회가 늦어도 바뀌지 않게)
         vehicle.getOdometer().getCurrentDistanceDriven(
-            { km -> main.post { begin(km ?: 0f) } },
-            { log("계기판 조회 실패", it) },
+            { km -> main.post { starting = false; begin(km ?: 0f, who) } },
+            { main.post { starting = false }; log("계기판 조회 실패", it) },
         )
     }
 
-    private fun begin(km: Float) {
+    private fun begin(km: Float, who: Profile) {
+        if (driving) return
+        user = who
         val now = System.currentTimeMillis()
         val last = store.lastEnd()
         // 앱이 꺼져 있던 동안 달린 거리. 시각은 알 수 없어 마지막 종료~지금으로 둔다.
         val missed = last?.let { missedDistanceKm(it.odoEndKm, km) }
-        if (missed != null) store.add(Trip(last.endMillis, now, last.odoEndKm, km, DRIVER, null, "미기록 구간"))
+        if (missed != null) store.add(Trip(last.endMillis, now, last.odoEndKm, km, user.name, null, "미기록 구간", dept = user.dept))
         startMillis = now; odoStart = km; lastDestination = ""; arrived = false
         asking = null
         mergeWith = if (missed == null) mergeCandidate(last, now) else null
@@ -231,7 +243,7 @@ class TripRecorder(context: Context, private val store: TripStore) {
         main.removeCallbacks(parkTimeout)
         odoStart = null; parkedSince = null
         if (confirm == Confirm.MERGE) { confirm = null; mergeWith = null } // 답 없이 끝나면 따로 둔다
-        var trip = Trip(startMillis, System.currentTimeMillis(), from, to, DRIVER, null, lastDestination, arrived)
+        var trip = Trip(startMillis, System.currentTimeMillis(), from, to, user.name, null, lastDestination, arrived, user.dept)
         // 정차 중 화면에서 이전 운행의 용도를 골랐을 수 있으므로 저장소의 최신 값으로 합친다.
         mergeWith?.let { m ->
             val prev = store.all().find { it.startMillis == m.startMillis } ?: m
