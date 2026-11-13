@@ -22,7 +22,7 @@ Vehicle(Gear, Odometer, Seat, Door) · NaviHelper(도착 이벤트) · TextToSpe
 
 1. Android Studio에 Pleos Connect Emulator(API 34, v2.1.0)를 설치하고 AVD 실행
    ([설치 가이드](https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator))
-2. 빌드·설치 (JDK 17 이상)
+2. 빌드·설치 (JDK 17~21. JDK 25에서는 빌드가 실패한다)
 
 ```bash
 ./gradlew :app:installDebug
@@ -30,7 +30,14 @@ Vehicle(Gear, Odometer, Seat, Door) · NaviHelper(도착 이벤트) · TextToSpe
 
 3. 앱 실행 후 Virtual Console(`adb forward tcp:8088 tcp:8088` → http://127.0.0.1:8088)에서 기어 D → P, Door Position Front left Open으로 운행을 만들거나, 화면의 `운행 시작`/`운행 종료` 버튼 사용
 
-## 테스트
+## 테스트 환경
+
+- Pleos Connect Emulator v2.1.0 (AVD `Pleos_Connect_v2.1.0`, API 34)
+- 화면 규격: 2560×1440 가로. 앱은 오른쪽 앱 영역(약 1680×1210)에 표시된다
+- 필요한 설정: 없음. 차량 신호는 Virtual Console로 넣는다
+- 주행(D) 중에는 Pleos가 앱 화면을 가리므로 화면 확인은 P 상태에서 한다
+
+## 단위 테스트
 
 ```bash
 ./gradlew :app:testDebugUnitTest
@@ -44,8 +51,10 @@ release 빌드:
 
 1. 키스토어를 만든다(한 번만). 키스토어와 비밀번호는 잃어버리면 같은 서명으로 업데이트할 수 없으니 따로 보관한다.
    ```bash
-   keytool -genkeypair -v -keystore ~/autolog-release.jks -alias autolog -keyalg RSA -keysize 2048 -validity 10000
+   mkdir -p ~/autolog-keys
+   keytool -genkeypair -v -keystore ~/autolog-keys/autolog-release.jks -alias autolog -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=autolog"
    ```
+   `-dname`을 지정해 인증서에 실명 등 개인정보가 들어가지 않게 한다.
 2. `keystore.properties.example`을 `keystore.properties`로 복사해 경로와 비밀번호를 채운다.
 3. 빌드하고 제출 파일명으로 복사한다.
    ```bash
