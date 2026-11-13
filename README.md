@@ -12,7 +12,12 @@
 - 종료 후 30분 안에 다시 출발하면 이전 운행에 이어 붙일지 질문 (목적지 도착으로 끝난 운행은 제외)
 - 앱이 꺼져 있던 동안의 계기판 차이는 "미기록 구간" 운행으로 남기고 질문
 - 주행(D) 중에는 Pleos가 앱 화면을 가리므로 출발 시 질문은 음성으로만 답함. 정차 중엔 화면 버튼으로도 선택
-- 정차 중 화면에서 운행 목록 확인, `운행기록부.csv` 내보내기 (앱 외부 저장소 폴더)
+- 정차·대기 중 화면에서 운행 목록 확인, 운행을 눌러 용도 수정 (출발하면 수정 창을 닫음)
+- 차량·사용자 정보(상호, 사업자등록번호, 차종, 자동차등록번호, 부서, 성명) 입력. 부서·성명은 출발 시점 값으로 운행마다 기록
+- 운행기록부 CSV 내보내기: 공용 `다운로드/AutoLog/운행기록부_날짜시각.csv`에 저장 (Android 10+, 저장소 권한 불필요). 공유받을 앱이 있으면 공유 버튼 표시
+  - 머리말: 상호·사업자등록번호·차종·자동차등록번호
+  - 표: 사용일자, 부서, 성명, 주행 전·후 계기판 거리, 주행거리, 출퇴근용·일반업무용 거리, 비고
+  - 월별 소계와 기간 합계(총주행거리, 업무용 사용거리, 업무사용비율). 미분류 운행은 총주행거리에만 포함
 
 ## 사용 SDK
 
@@ -29,6 +34,13 @@ Vehicle(Gear, Odometer, Seat, Door) · NaviHelper(도착 이벤트) · TextToSpe
 ```
 
 3. 앱 실행 후 Virtual Console(`adb forward tcp:8088 tcp:8088` → http://127.0.0.1:8088)에서 기어 D → P, Door Position Front left Open으로 운행을 만들거나, 화면의 `운행 시작`/`운행 종료` 버튼 사용
+
+4. 내보낸 CSV 꺼내기 (에뮬레이터 앱은 사용자 10에서 실행된다)
+
+```bash
+adb shell content query --user 10 --uri content://media/external/downloads --projection _id:_display_name
+adb shell content read --user 10 --uri content://media/external/downloads/<_id> > 운행기록부.csv
+```
 
 ## 테스트 환경
 
