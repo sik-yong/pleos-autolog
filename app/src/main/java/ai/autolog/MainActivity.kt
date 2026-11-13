@@ -199,7 +199,7 @@ class MainActivity : Activity() {
      */
     private fun render() {
         val r = app.recorder
-        val moving = r.driving && !r.parked
+        val moving = (r.driving && !r.parked) || r.inGear
         val (label, color) = when {
             moving -> "주행 중" to Palette.DRIVING
             r.parked -> "정차 중" to Palette.PARKED
@@ -284,6 +284,7 @@ class MainActivity : Activity() {
             .setTitle("차량·사용자 정보")
             .setView(ScrollView(this).apply { addView(form) })
             .setPositiveButton("저장") { _, _ ->
+                if (app.recorder.inGear) return@setPositiveButton // 출발한 뒤에는 저장하지 않는다
                 val v = edits.map { it.text.toString() }
                 app.profiles.save(Profile(v[0], v[1], v[2], v[3], v[4], v[5]))
                 render()

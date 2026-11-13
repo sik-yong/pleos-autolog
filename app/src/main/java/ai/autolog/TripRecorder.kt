@@ -67,6 +67,8 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
     var onChange: () -> Unit = {}
 
     val driving get() = odoStart != null
+    /** 기어가 P가 아닌 상태. 계기판 조회가 늦거나 실패해도 화면 조작을 바로 막는 데 쓴다. */
+    var inGear = false; private set
     /** 운행 중 P에 서 있는 상태. 이때는 화면 조작이 열린다. */
     val parked get() = parkedSince != null
     /** 용도를 받아야 하는 운행 (지금 묻는 것 → 저장소의 미분류 순). */
@@ -130,6 +132,10 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
     }
 
     private fun onGear(gear: VehicleGear?) {
+        if (gear != null && gear != VehicleGear.GEAR_UNKNOWN) {
+            val moving = gear != VehicleGear.GEAR_PARK
+            if (moving != inGear) { inGear = moving; onChange() }
+        }
         when {
             gear == VehicleGear.GEAR_PARK -> if (driving && parkedSince == null) park()
             gear == null || gear == VehicleGear.GEAR_UNKNOWN -> Unit
@@ -193,6 +199,7 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
 
     fun startTrip() {
         if (driving) return
+        user = profiles.load() // 출발하는 순간의 사용자로 확정한다 (계기판 조회가 늦어도 바뀌지 않게)
         vehicle.getOdometer().getCurrentDistanceDriven(
             { km -> main.post { begin(km ?: 0f) } },
             { log("계기판 조회 실패", it) },
@@ -204,7 +211,6 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
         val last = store.lastEnd()
         // 앱이 꺼져 있던 동안 달린 거리. 시각은 알 수 없어 마지막 종료~지금으로 둔다.
         val missed = last?.let { missedDistanceKm(it.odoEndKm, km) }
-        user = profiles.load()
         if (missed != null) store.add(Trip(last.endMillis, now, last.odoEndKm, km, user.name, null, "미기록 구간", dept = user.dept))
         startMillis = now; odoStart = km; lastDestination = ""; arrived = false
         asking = null
