@@ -1,6 +1,7 @@
 package ai.autolog
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.Application
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -10,7 +11,9 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.text.InputType
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -20,13 +23,15 @@ import java.util.Locale
 
 /** 운행은 화면이 꺼져 있어도 이어져야 하므로 기록기는 앱 수명에 묶는다. */
 class AutoLogApp : Application() {
+    lateinit var profiles: ProfileStore
     lateinit var store: TripStore
     lateinit var recorder: TripRecorder
 
     override fun onCreate() {
         super.onCreate()
-        store = TripStore(this)
-        recorder = TripRecorder(this, store).also { it.start() }
+        profiles = ProfileStore(this)
+        store = TripStore(this, profiles)
+        recorder = TripRecorder(this, store, profiles).also { it.start() }
     }
 }
 
@@ -71,6 +76,8 @@ class MainActivity : Activity() {
     private lateinit var shareButton: Button
     private var lastExport: Exported? = null
     private lateinit var tripList: LinearLayout
+    private lateinit var profileLine: TextView
+    private var dialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -121,9 +128,13 @@ class MainActivity : Activity() {
             addView(LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 addView(text("운행 기록", 24f, Palette.TEXT, bold = true), weighted(1f))
+                addView(button("차량·사용자 정보") { editProfile() }, LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, dp(64)).apply { marginEnd = dp(12) })
                 addView(button("운행기록부 내보내기", Palette.ACCENT) { export() }, LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, dp(64)))
             })
+            profileLine = text("", 16f, Palette.SUB).apply { setPadding(0, dp(8), 0, 0) }
+            addView(profileLine)
             addView(exportInfo)
             shareButton = button("다른 앱으로 공유") { share() }.apply { visibility = View.GONE }
             addView(shareButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(64)).apply { topMargin = dp(8) })
@@ -147,6 +158,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        dialog?.dismiss()
         app.recorder.onChange = {}
         super.onDestroy()
     }
@@ -205,7 +217,9 @@ class MainActivity : Activity() {
         demoRow?.visibility = visible(!moving)
         summaryCard.visibility = visible(!moving)
         recordsSection.visibility = visible(!moving)
-        if (moving) return
+        if (moving) { dialog?.dismiss(); return } // 출발하면 입력 창을 닫는다
+
+        profileLine.text = app.profiles.load().summary().ifEmpty { "차량·사용자 정보를 입력하면 운행기록부 머리말과 사용자 칸에 들어갑니다." }
 
         val trips = app.store.all()
         val s = monthSummary(trips, System.currentTimeMillis())
@@ -239,6 +253,43 @@ class MainActivity : Activity() {
             background = rounded(Palette.of(t.purpose), dp(14).toFloat())
             setPadding(dp(14), dp(6), dp(14), dp(6))
         })
+    }
+
+    /** 정차·대기 중에만 연다. 성명·부서는 이후 시작하는 운행부터 들어간다. */
+    private fun editProfile() {
+        val p = app.profiles.load()
+        val fields = listOf(
+            "상호(법인명)" to p.company, "사업자등록번호" to p.bizNo, "차종" to p.carModel,
+            "자동차등록번호" to p.plate, "부서" to p.dept, "성명" to p.name,
+        )
+        val edits = fields.map { (label, value) ->
+            EditText(this).apply {
+                hint = label; setText(value); textSize = 20f; setSingleLine()
+                // 시스템 대화상자는 밝은 배경이라 앱의 어두운 테마 글자색(흰색)을 그대로 쓰면 안 보인다.
+                setTextColor(Color.parseColor("#14181F")); setHintTextColor(Color.parseColor("#9AA4B2"))
+                inputType = if (label == "사업자등록번호") InputType.TYPE_CLASS_PHONE else InputType.TYPE_CLASS_TEXT
+            }
+        }
+        val form = column().apply {
+            setPadding(dp(24), dp(8), dp(24), dp(8))
+            fields.forEachIndexed { i, (label, _) ->
+                addView(TextView(context).apply { text = label; textSize = 16f; setPadding(0, dp(12), 0, 0) })
+                addView(edits[i])
+            }
+            addView(TextView(context).apply {
+                text = "성명·부서는 저장한 뒤 시작하는 운행부터 기록됩니다."; textSize = 14f; setPadding(0, dp(12), 0, 0)
+            })
+        }
+        dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("차량·사용자 정보")
+            .setView(ScrollView(this).apply { addView(form) })
+            .setPositiveButton("저장") { _, _ ->
+                val v = edits.map { it.text.toString() }
+                app.profiles.save(Profile(v[0], v[1], v[2], v[3], v[4], v[5]))
+                render()
+            }
+            .setNegativeButton("취소", null)
+            .show()
     }
 
     // --- 화면 부품 ---

@@ -17,6 +17,7 @@ data class Trip(
     val purpose: Purpose?,
     val note: String,
     val arrived: Boolean = false, // 내비 목적지 도착으로 끝난 운행
+    val dept: String = "", // 사용자 부서 (driver는 성명)
 ) {
     val distanceKm: Float get() = (odoEndKm - odoStartKm).coerceAtLeast(0f)
 }
@@ -30,9 +31,10 @@ const val MERGE_WINDOW_MILLIS = 30 * 60_000L
 fun mergeCandidate(last: Trip?, nowMillis: Long): Trip? =
     last?.takeIf { !it.arrived && nowMillis - it.endMillis <= MERGE_WINDOW_MILLIS }
 
-/** 이어 붙인 운행. 시작은 이전 운행, 끝은 새 운행. 용도는 이전 답을 이어받는다. */
+/** 이어 붙인 운행. 시작은 이전 운행, 끝은 새 운행. 용도와 사용자는 이전 운행을 이어받는다. */
 fun merge(prev: Trip, next: Trip) = next.copy(
     startMillis = prev.startMillis, odoStartKm = prev.odoStartKm,
+    driver = prev.driver, dept = prev.dept,
     purpose = next.purpose ?: prev.purpose,
     note = listOf(prev.note, next.note).filter { it.isNotEmpty() }.joinToString(" → "),
 )
@@ -92,14 +94,24 @@ fun monthSummary(trips: List<Trip>, nowMillis: Long, zone: ZoneId = ZoneId.of("A
     )
 }
 
-// 국세청 업무용승용차 운행기록부 열 순서. UTF-8 BOM은 엑셀 한글 깨짐 방지용.
-fun toNtsCsv(trips: List<Trip>, zone: ZoneId = ZoneId.of("Asia/Seoul")): String {
+/**
+ * 국세청 업무용승용차 운행기록부 서식(머리말: 상호·사업자등록번호·차종·자동차등록번호, 표: 사용일자·사용자(부서·성명)·운행내역·비고).
+ * UTF-8 BOM은 엑셀 한글 깨짐 방지용.
+ */
+fun toNtsCsv(trips: List<Trip>, profile: Profile = Profile(), zone: ZoneId = ZoneId.of("Asia/Seoul")): String {
     val day = DateTimeFormatter.ofPattern("yyyy-MM-dd(E)", Locale.KOREAN).withZone(zone)
     val km = { v: Float -> String.format(Locale.US, "%.1f", v) }
-    val header = "사용일자,사용자,주행 전 계기판 거리(km),주행 후 계기판 거리(km),주행거리(km),출퇴근용(km),일반업무용(km),비고"
+    val head = listOf(
+        "업무용승용차 운행기록부",
+        listOf("상호(법인명)", profile.company, "사업자등록번호", profile.bizNo).joinToString(",") { csvCell(it) },
+        listOf("차종", profile.carModel, "자동차등록번호", profile.plate).joinToString(",") { csvCell(it) },
+        "",
+    )
+    val header = "사용일자,부서,성명,주행 전 계기판 거리(km),주행 후 계기판 거리(km),주행거리(km),출퇴근용(km),일반업무용(km),비고"
     val rows = trips.sortedBy { it.startMillis }.map { t ->
         listOf(
             day.format(Instant.ofEpochMilli(t.startMillis)),
+            t.dept,
             t.driver,
             km(t.odoStartKm),
             km(t.odoEndKm),
@@ -109,7 +121,7 @@ fun toNtsCsv(trips: List<Trip>, zone: ZoneId = ZoneId.of("Asia/Seoul")): String 
             t.note,
         ).joinToString(",") { csvCell(it) }
     }
-    return "\uFEFF" + (listOf(header) + rows).joinToString("\r\n") + "\r\n"
+    return "\uFEFF" + (head + header + rows).joinToString("\r\n") + "\r\n"
 }
 
 private fun csvCell(s: String) =
