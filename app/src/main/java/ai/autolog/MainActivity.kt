@@ -2,6 +2,7 @@ package ai.autolog
 
 import android.app.Activity
 import android.app.Application
+import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.Typeface
@@ -67,6 +68,8 @@ class MainActivity : Activity() {
     private lateinit var monthDetail: TextView
     private lateinit var recordsSection: LinearLayout
     private lateinit var exportInfo: TextView
+    private lateinit var shareButton: Button
+    private var lastExport: Exported? = null
     private lateinit var tripList: LinearLayout
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -122,6 +125,8 @@ class MainActivity : Activity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT, dp(64)))
             })
             addView(exportInfo)
+            shareButton = button("다른 앱으로 공유") { share() }.apply { visibility = View.GONE }
+            addView(shareButton, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(64)).apply { topMargin = dp(8) })
             addView(tripList)
         }
 
@@ -147,8 +152,33 @@ class MainActivity : Activity() {
     }
 
     private fun export() {
-        val f = app.store.exportCsv()
-        exportInfo.text = "운행 ${app.store.all().size}건을 국세청 운행기록부 양식(CSV)으로 저장했습니다.\n${f.absolutePath}"
+        val e = try {
+            app.store.exportCsv()
+        } catch (ex: Exception) {
+            lastExport = null; shareButton.visibility = View.GONE
+            exportInfo.text = "운행기록부를 저장하지 못했습니다: ${ex.message}"
+            return
+        }
+        lastExport = e
+        exportInfo.text = "운행 ${app.store.all().size}건을 운행기록부 CSV로 저장했습니다.\n${e.location}"
+        shareButton.visibility = visible(shareIntent(e) != null)
+    }
+
+    /** 공유받을 앱이 있을 때만 공유 인텐트를 만든다. 차량에 따라 없을 수 있다. */
+    private fun shareIntent(e: Exported): Intent? {
+        val uri = e.uri ?: return null
+        val send = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, e.name)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        return send.takeIf { it.resolveActivity(packageManager) != null }
+    }
+
+    private fun share() {
+        val send = lastExport?.let(::shareIntent) ?: return
+        startActivity(Intent.createChooser(send, "운행기록부 공유"))
     }
 
     /**
