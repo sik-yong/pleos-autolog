@@ -121,7 +121,7 @@ class MainActivity : Activity() {
             })
         }
 
-        exportInfo = text("", 16f, Palette.SUB).apply { setPadding(0, dp(8), 0, 0) }
+        exportInfo = text("", 16f, Palette.SUB).apply { setPadding(0, dp(8), 0, 0); visibility = View.GONE }
         tripList = column()
         recordsSection = column().apply {
             setPadding(0, dp(24), 0, 0)
@@ -168,10 +168,12 @@ class MainActivity : Activity() {
             app.store.exportCsv()
         } catch (ex: Exception) {
             lastExport = null; shareButton.visibility = View.GONE
+            exportInfo.visibility = View.VISIBLE
             exportInfo.text = "운행기록부를 저장하지 못했습니다: ${ex.message}"
             return
         }
         lastExport = e
+        exportInfo.visibility = View.VISIBLE
         exportInfo.text = "운행 ${app.store.all().size}건을 운행기록부 CSV로 저장했습니다.\n${e.location}"
         shareButton.visibility = visible(shareIntent(e) != null)
     }
@@ -231,6 +233,9 @@ class MainActivity : Activity() {
         }
 
         tripList.removeAllViews()
+        if (trips.isNotEmpty()) tripList.addView(text("운행을 누르면 용도를 바꿀 수 있습니다.", 14f, Palette.SUB).apply {
+            setPadding(0, dp(12), 0, 0)
+        })
         if (trips.isEmpty()) {
             tripList.addView(text("아직 기록된 운행이 없습니다. 기어를 P에서 바꾸면 기록을 시작합니다.", 18f, Palette.SUB).apply {
                 setPadding(0, dp(16), 0, 0)
@@ -241,6 +246,8 @@ class MainActivity : Activity() {
 
     private fun tripRow(t: Trip) = LinearLayout(this).apply {
         gravity = Gravity.CENTER_VERTICAL
+        isClickable = true
+        setOnClickListener { editPurpose(t) }
         background = rounded(if (t.purpose == null) Palette.CARD_ALERT else Palette.CARD, dp(14).toFloat())
         setPadding(dp(20), dp(16), dp(20), dp(16))
         layoutParams = full().apply { topMargin = dp(10) }
@@ -253,6 +260,23 @@ class MainActivity : Activity() {
             background = rounded(Palette.of(t.purpose), dp(14).toFloat())
             setPadding(dp(14), dp(6), dp(14), dp(6))
         })
+    }
+
+    /** 운행을 눌러 용도를 바꾼다. 목록은 정차·대기 중에만 보이고, 출발하면 창을 닫는다. */
+    private fun editPurpose(t: Trip) {
+        if (app.recorder.inGear) return
+        // 차량 화면에서 누르기 쉽게 기본 목록 대신 큰 용도 버튼을 쓴다. 지금 용도에는 ✓를 붙인다.
+        val row = buttonRow(Purpose.entries.map { p ->
+            button(if (p == t.purpose) "✓ ${p.label}" else p.label, Palette.of(p)) {
+                app.recorder.edit(t.startMillis, p)
+                dialog?.dismiss()
+            }
+        }).apply { setPadding(dp(24), dp(16), dp(24), dp(8)) }
+        dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle("${dayTime(t.startMillis)} · ${km(t.distanceKm)} 운행의 용도")
+            .setView(row)
+            .setNegativeButton("취소", null)
+            .show()
     }
 
     /** 정차·대기 중에만 연다. 성명·부서는 이후 시작하는 운행부터 들어간다. */

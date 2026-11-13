@@ -43,7 +43,9 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
     private val main = Handler(Looper.getMainLooper())
     private val parkTimeout = Runnable { checkEnd() }
     // 답이 없으면 마이크를 닫는다. 질문은 그대로 남아 정차 중 화면에서 고르거나 다음 출발 때 다시 묻는다.
-    private val listenTimeout = Runnable { stt.stop(); update("음성 답변 없음: 화면에서 선택하세요") }
+    private val listenTimeout = Runnable { listening = false; stt.stop(); update("음성 답변 없음: 화면에서 선택하세요") }
+    /** 마이크를 연 질문이 있을 때만 음성 결과를 받는다. 화면에서 먼저 답한 뒤 늦게 온 결과가 다른 운행에 들어가지 않게. */
+    private var listening = false
 
     private var startMillis = 0L
     private var odoStart: Float? = null
@@ -112,6 +114,7 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
             override fun onUpdatedRms(rms: Double) = Unit
             override fun onDone() {
                 if (asking == null && confirm == null) return
+                listening = true
                 stt.request()
                 main.postDelayed(listenTimeout, LISTEN_TIMEOUT_MILLIS)
             }
@@ -126,9 +129,14 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
             override fun onUpdatedRms(rms: Double) = Unit
             override fun onEndedRecognition() = Unit
             override fun onUpdated(stt: String, completed: Boolean) {
-                if (completed) main.post { main.removeCallbacks(listenTimeout); answer(stt) }
+                if (completed) main.post {
+                    if (!listening) return@post
+                    listening = false; main.removeCallbacks(listenTimeout); answer(stt)
+                }
             }
-            override fun onError(errorType: SttError) = update("음성 인식 실패: 화면에서 선택하세요")
+            override fun onError(errorType: SttError) = main.post {
+                listening = false; main.removeCallbacks(listenTimeout); update("음성 인식 실패: 화면에서 선택하세요")
+            }.let {}
         })
     }
 
@@ -286,7 +294,21 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
         tts.speak("${p.label} 운행으로 저장했습니다.", true)
     }
 
-    private fun stopListening() { main.removeCallbacks(listenTimeout); stt.stop() }
+    private fun stopListening() { listening = false; main.removeCallbacks(listenTimeout); stt.stop() }
+
+    /**
+     * 정차 중 운행 목록에서 용도를 바꾼다. 지금 음성으로 묻고 있는 운행이면 질문을 거두고 마이크를 닫는다.
+     * 주행 중에는 바꾸지 않는다.
+     */
+    fun edit(startMillis: Long, p: Purpose) {
+        if (inGear) return
+        val t = store.all().find { it.startMillis == startMillis } ?: return
+        if (asking?.startMillis == startMillis) { asking = null; stopListening() }
+        store.setPurpose(startMillis, p, t.note)
+        update("수정됨: ${dayLabel(t)} ${p.label} ${"%.1f".format(t.distanceKm)}km")
+    }
+
+    private fun dayLabel(t: Trip) = java.text.SimpleDateFormat("M/d HH:mm", Locale.KOREA).format(java.util.Date(t.startMillis))
 
     fun release() {
         main.removeCallbacksAndMessages(null)
