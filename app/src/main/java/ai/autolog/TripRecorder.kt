@@ -69,6 +69,7 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
     val driving get() = odoStart != null
     /** 기어가 P가 아닌 상태. 계기판 조회가 늦거나 실패해도 화면 조작을 바로 막는 데 쓴다. */
     var inGear = false; private set
+    private var starting = false
     /** 운행 중 P에 서 있는 상태. 이때는 화면 조작이 열린다. */
     val parked get() = parkedSince != null
     /** 용도를 받아야 하는 운행 (지금 묻는 것 → 저장소의 미분류 순). */
@@ -198,15 +199,18 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
     }
 
     fun startTrip() {
-        if (driving) return
-        user = profiles.load() // 출발하는 순간의 사용자로 확정한다 (계기판 조회가 늦어도 바뀌지 않게)
+        if (driving || starting) return // 계기판 응답을 기다리는 중에 다시 출발해도 첫 요청 하나만 쓴다
+        starting = true
+        val who = profiles.load() // 출발하는 순간의 사용자로 확정한다 (계기판 조회가 늦어도 바뀌지 않게)
         vehicle.getOdometer().getCurrentDistanceDriven(
-            { km -> main.post { begin(km ?: 0f) } },
-            { log("계기판 조회 실패", it) },
+            { km -> main.post { starting = false; begin(km ?: 0f, who) } },
+            { main.post { starting = false }; log("계기판 조회 실패", it) },
         )
     }
 
-    private fun begin(km: Float) {
+    private fun begin(km: Float, who: Profile) {
+        if (driving) return
+        user = who
         val now = System.currentTimeMillis()
         val last = store.lastEnd()
         // 앱이 꺼져 있던 동안 달린 거리. 시각은 알 수 없어 마지막 종료~지금으로 둔다.
