@@ -33,7 +33,7 @@ Vehicle(Gear, Odometer, Seat, Door) · NaviHelper(도착 이벤트) · TextToSpe
 ./gradlew :app:installDebug
 ```
 
-3. 앱 실행 후 Virtual Console(`adb forward tcp:8088 tcp:8088` → http://127.0.0.1:8088)에서 기어 D → P, Door Position Front left Open으로 운행을 만들거나, 화면의 `운행 시작`/`운행 종료` 버튼 사용
+3. 앱 실행 후 Virtual Console(`adb forward tcp:8088 tcp:8088` → http://127.0.0.1:8088)에서 기어 D → P, Door Position Front left Open으로 운행을 만든다. debug 빌드에서는 화면의 `시연: 운행 시작`/`시연: 운행 종료` 버튼도 쓸 수 있다(제출한 release APK에는 이 버튼이 없다)
 
 4. 내보낸 CSV 꺼내기 (에뮬레이터 앱은 사용자 10에서 실행된다)
 
@@ -57,7 +57,7 @@ adb shell content read --user 10 --uri content://media/external/downloads/<_id> 
 
 ## APK
 
-`apk/` 폴더 (제출 시 `autolog_AutoLogBusiness_release.apk`)
+`apk/autolog_AutoLogBusiness_release.apk` (release v0.2.1, versionCode 3)
 
 release 빌드:
 
