@@ -182,7 +182,7 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
     private fun checkEnd() {
         val since = parkedSince ?: return
         when (parkDecision(System.currentTimeMillis() - since, beltReleased, doorOpened, arrived)) {
-            ParkDecision.END -> { if (confirm == Confirm.END) confirm = null; endTrip() }
+            ParkDecision.END -> { if (confirm == Confirm.END) { confirm = null; stopListening() }; endTrip() }
             ParkDecision.ASK -> if (!askedThisStop) {
                 askedThisStop = true
                 askYesNo(Confirm.END, "오래 정차 중: 운행을 마칠까요?", "정차한 지 10분이 지났습니다. 운행을 마칠까요?")
@@ -192,6 +192,7 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
     }
 
     private fun askYesNo(c: Confirm, status: String, question: String) {
+        stopListening() // 이전 질문의 마이크와 시간 제한을 닫아야 새 질문의 답을 끊지 않는다
         confirm = c
         update(status)
         tts.speak(question, true)
@@ -281,6 +282,7 @@ class TripRecorder(context: Context, private val store: TripStore, private val p
     }
 
     private fun ask(t: Trip, question: String) {
+        stopListening() // 예: 종료 확인을 듣던 중 하차로 운행이 끝나 용도 질문으로 넘어가는 경우
         asking = t
         tts.speak(question, true)
     }
